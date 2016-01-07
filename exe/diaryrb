@@ -37,15 +37,25 @@ opts = Slop.parse do |o|
   end
 end
 
+# Global config options
 Diary::Configuration.verbose = opts.verbose?
 
+# Get diary name from configuration or command line
 _diary = DEFAULT_DIARY
 if opts[:diary]
+  # ALWAYS prefer the given argument
   _diary = opts[:diary]
+elsif Diary::Configuration.exists?
+  if Diary::Configuration.has_diary_config?('default')
+    Diary.debug "LOADING default DIARY"
+    _diary = 'default'
+    Diary::Configuration.load_config('default')
+  else
+    Diary.debug "CONFIG EXISTS, NO DEFAULT. LOADING DIARY #{ _diary }"
+  end
 end
-Diary::Configuration.current_diary = _diary
 
-Diary.debug "LOADING DIARY #{ Diary::Configuration.current_diary }"
+Diary::Configuration.current_diary = _diary
 
 _passphrase = nil
 if prompt_for_password
@@ -61,7 +71,7 @@ elsif Diary::Configuration.passphrase
 end
 
 diary_path = Diary::Configuration.path || Diary::Configuration.current_diary
-Diary.debug "LOADING DIARY AT #{ diary_path }"
+Diary.debug "LOADING DIARY #{ Diary::Configuration.current_diary } AT PATH #{ diary_path }"
 if _passphrase.nil? || _passphrase.size == 0
   Diary.debug "LOADING WITH NO PASSPHRASE!"
   $store = Diary::Store.new(diary_path)
@@ -90,8 +100,6 @@ if opts.list?
     end
   end
 elsif opts.serve?
-  Diary::Server.database = Diary::Configuration.current_diary
-  Diary::Server.passphrase = _passphrase
   Diary::Server.store = $store
   t = Thread.new do
     Diary::Server.run!
@@ -109,10 +117,11 @@ else
     $store.write_entry(diary_entry)
   end
 
+  # create a tempfile to store entry in progress in EDITOR
   file = Tempfile.new(['diary', '.md'])
   file.sync = true
 
-  ## CREATE NEW ENTRY
+  # default new entry
   entry_source = {
     day: Time.now.strftime("%F"),
     time: Time.now.strftime("%T"),
@@ -121,13 +130,14 @@ else
     text: "text goes here"
   }
 
-  # unless --edit option is used with a valid entry
+  # if --edit option is used with a valid entry, load it
   if opts[:edit] && (entry_hash = $store.read(opts[:edit]))
     entry = Diary::Entry.from_store(entry_hash)
     entry_source = entry.to_hash
     entry_source[:tags] = entry_source[:tags].join(', ')
   end
 
+  # prepare entry and launch editor
   tmpl = Diary::Entry.generate(entry_source, $store)
   file.write(tmpl)
 
@@ -165,9 +175,9 @@ else
     end
 
     if quitter
-      Diary.debug "QUIT SIGNAL RECEIVED, WRITING..."
-      parse_and_store(file)
-      Diary.debug "ERASING..."
+      Diary.debug "QUIT SIGNAL RECEIVED"
+      # parse_and_store(file)
+      Diary.debug "CLEANING UP..."
       finish(file)
       Diary.debug "EXIT"
       exit 0
@@ -175,5 +185,4 @@ else
 
     sleep 1
   end
-
 end

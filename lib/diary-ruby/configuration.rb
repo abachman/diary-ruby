@@ -32,21 +32,56 @@ module Diary
         config[method.to_s]
       end
 
-      def config
-        @config ||= begin
-                      cd = config_dir
-                      if cd.nil?
-                        raise Diary::Configuration::Error.new("Failed to find configuration directory")
-                      end
+      def exists?
+        !config_dir.nil?
+      end
 
-                      cf = File.join(cd, 'config.yaml')
-                      config_settings = YAML.load(File.open(cf))
-                      if config_settings.has_key?(current_diary)
-                        config_settings[current_diary]
-                      else
-                        {}
-                      end
-                    end
+      def has_diary_config?(diary_identifier)
+        load_global_settings
+        global_settings.has_key?(diary_identifier)
+      end
+
+      def global_settings
+        @global_settings || {}
+      end
+
+      # load a specific diary
+      def load_config(diary_identifier)
+        @config = load_config_for_diary(diary_identifier)
+      end
+
+      # default to current_diary
+      def config
+        @config ||= load_config_for_diary(current_diary)
+      end
+
+      private
+
+      def load_config_for_diary(diary_identifier)
+        if !exists?
+          # no config file exists, build empty configuration options starting now
+          {}
+        else
+          load_global_settings
+          if global_settings.has_key?(diary_identifier)
+            global_settings[diary_identifier]
+          else
+            # configuration for this diary doesn't exist, build empty
+            # configuration options starting now
+            {}
+          end
+        end
+      end
+
+      def load_global_settings
+        @global_settings ||= begin
+                               if exists?
+                                 cf = File.join(config_dir, 'config.yaml')
+                                 YAML.load(File.open(cf))
+                               else
+                                 {}
+                               end
+                             end
       end
     end
   end
