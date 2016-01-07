@@ -5,27 +5,41 @@ require 'slop'
 require 'launchy'
 require 'thread'
 
+DEFAULT_DIARY = "diaryrb.store"
+
+prompt_for_password = false
 opts = Slop.parse do |o|
   # o.string '-c', '--configuration', 'config file location'
-  o.string '-d', '--diary', 'choose diary storage file'
-  o.string '-p', '--passphrase', 'Use encryption passphrase. Diary is assumed to be unencrypted if no passphrase is given.', default: false
+  o.string '-d', '--diary', "choose diary storage file (leave blank for default, #{DEFAULT_DIARY})"
+  o.string '-p', '--passphrase', 'Use given encryption passphrase or prompt if option is used but no passphrase is given.', default: false do |v|
+    if v.start_with?('-') || v.nil? || v.strip.size == 0
+      prompt_for_password = true
+    end
+  end
 
   # usage modes
+  o.separator ''
+  o.separator "Actions (can't be used in combination):"
   o.string '-e', '--edit', 'edit a specific post'
   o.bool '-l', '--list', 'list all posts by date'
   o.bool '-s', '--serve', 'start Diary webserver'
 
-  o.bool   '-v', '--verbose', 'enable verbose mode'
-
-  o.on '-V', '--version', 'print the version' do
+  o.separator ''
+  o.separator 'Other options:'
+  o.bool '-v', '--verbose', 'enable verbose mode'
+  o.on '-V', '--version', 'print the version and quit' do
     puts "diaryrb #{ Diary::VERSION }"
+    exit
+  end
+  o.on '-h', '--help', 'show help and quit' do
+    puts o
     exit
   end
 end
 
 Diary::Configuration.verbose = opts.verbose?
 
-_diary = "diaryrb.store"
+_diary = DEFAULT_DIARY
 if opts[:diary]
   _diary = opts[:diary]
 end
@@ -34,34 +48,38 @@ Diary::Configuration.current_diary = _diary
 Diary.debug "LOADING DIARY #{ Diary::Configuration.current_diary }"
 
 _passphrase = nil
-if opts[:passphrase] && opts[:passphrase].strip.size > 0
-  _passphrase = opts[:passphrase]
-elsif opts[:passphrase] == ''
+if prompt_for_password
   require 'io/console'
   print "Enter passphrase (leave blank for none): "
   _passphrase = STDIN.noecho {|io| io.gets}.chomp
+elsif opts[:passphrase] && opts[:passphrase].strip.size > 0
+  _passphrase = opts[:passphrase]
 elsif ENV['PASSPHRASE']
   _passphrase = ENV['PASSPHRASE']
 elsif Diary::Configuration.passphrase
   _passphrase = Diary::Configuration.passphrase
 end
 
+diary_path = Diary::Configuration.path || Diary::Configuration.current_diary
+Diary.debug "LOADING DIARY AT #{ diary_path }"
 if _passphrase.nil? || _passphrase.size == 0
   Diary.debug "LOADING WITH NO PASSPHRASE!"
-  $store = Diary::Store.new(Diary::Configuration.current_diary)
+  $store = Diary::Store.new(diary_path)
 else
-  Diary.debug "LOADING WITH PASSPHRASE #{ _passphrase }"
-  $store = Diary::SecureStore.new(Diary::Configuration.current_diary, _passphrase)
+  Diary.debug "LOADING WITH PASSPHRASE #{ _passphrase.gsub(/./, '*') }"
+  $store = Diary::SecureStore.new(diary_path, _passphrase)
 end
 
-# SANITIZE
+# this is like rake db:migrate
 $store.write do |db|
   db[:entries] ||= []
   db[:entries] = db[:entries].compact.uniq.sort
+  db[:tags] ||= []
 end
 
 if opts.list?
   entries = $store.read(:entries)
+  puts ''
 
   if entries.nil? || entries.size == 0
     puts "No entries"
