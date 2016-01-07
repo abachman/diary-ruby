@@ -9,36 +9,16 @@ module Diary
       enable :logging
     end
 
-    def self.passphrase=(val)
-      @db_passphrase = val
-    end
-
-    def self.database=(val)
-      @db_path = val
-    end
-
     def self.store=(val)
       @store = val
     end
 
-    def self.db_path
-      @db_path
-    end
-
-    def self.db_passphrase
-      @db_passphrase
+    def self.store
+      @store
     end
 
     def store
-      if @store.nil?
-        if settings.db_passphrase.nil?
-          @store = Diary::Store.new(settings.db_path)
-        else
-          @store = Diary::SecureStore.new(settings.db_path, settings.db_passphrase)
-        end
-      end
-
-      @store
+      self.class.store
     end
 
     get '/' do
@@ -96,12 +76,13 @@ module Diary
         tags = []
       end
 
-      entry = Entry.new(nil,
-                params[:day],
-                params[:time],
-                tags,
-                params[:text],
-                nil)
+      entry = Entry.new(
+        nil,
+        day: params[:day],
+        time: params[:time],
+        tags: tags,
+        text: params[:text],
+      )
 
       store.write_entry(entry)
 

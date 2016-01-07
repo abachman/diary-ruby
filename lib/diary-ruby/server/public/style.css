@@ -2,3 +2,32 @@
   width: 960px;
   margin: 0 auto;
 }
+
+form {
+}
+
+form input[type=text] {
+  border: 0;
+  border-bottom: 1px solid black;
+}
+
+form input.tags {
+  width: 300px;
+}
+
+form label {
+  display: block;
+  margin-bottom: 8px;
+}
+
+form label span {
+  display: inline-block;
+  width: 50px;
+}
+
+form textarea {
+  display: block;
+  width: 600px;
+  height: 300px;
+  margin-top: 8px;
+}

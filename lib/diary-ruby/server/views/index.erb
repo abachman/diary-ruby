@@ -7,27 +7,49 @@
 
   <body>
     <div class='wrapper'>
+      <h1>Existing Entries</h1>
+      <% if @entries.size == 0 %>
+        <p>Nothing to see here...</p>
+      <% else %>
+        <% @entries.each do |entry| %>
+          <div class='entry'>
+            <p>
+              <strong><%= entry.day %> <%= entry.time %></strong>
+              <a href='/entry/<%= entry.key %>'>json</a>
+            </p>
+            <div class='entry--text'>
+              <%= entry.formatted_text %>
+            </div>
+          </div>
+        <% end %>
+      <% end %>
+
+      <hr>
+
+      <h3>New Entry</h3>
       <form action='/entries' method='POST'>
-        <input class='day'  name='day' type='text' />
-        <input class='time' name='time' type='text' />
-        <br>
-        <input type='text' class='tags' name='tags'></textarea>
-        <br>
-        <textarea class='text' name='text'></textarea>
+        <label>
+          <span>Day</span>
+          <input class='day'  name='day' type='text' />
+        </label>
+
+        <label>
+          <span>Time</span>
+          <input class='time' name='time' type='text' />
+        </label>
+
+        <label>
+          <span>Tags</span>
+          <input type='text' class='tags' name='tags' />
+        </label>
+
+        <label>
+          <span>Text</span>
+          <textarea class='text' name='text'></textarea>
+        </label>
+
         <input type='submit' value='commit' />
       </form>
-
-      <% @entries.each do |entry| %>
-        <div class='entry'>
-          <p>
-            <strong><%= entry.day %> <%= entry.time %></strong>
-            <a href='/entry/<%= entry.key %>'>json</a>
-          </p>
-          <div class='entry--text'>
-            <%= entry.formatted_text %>
-          </div>
-        </div>
-      <% end %>
     </div>
   </body>
 </html>
