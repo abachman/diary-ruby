@@ -1,4 +1,4 @@
-**DON'T USE THIS YET**
+![travisci](https://travis-ci.org/abachman/diary-ruby.svg?branch=master)
 
 # diary-ruby
 
