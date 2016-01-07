@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+  <head>
+    <link href='style.css' rel='stylesheet' type='text/css' />
+    <script src='script.js'></script>
+  </head>
+
+  <body>
+    <div class='wrapper'>
+      <form action='/entries' method='POST'>
+        <input class='day'  name='day' type='text' />
+        <input class='time' name='time' type='text' />
+        <br>
+        <input type='text' class='tags' name='tags'></textarea>
+        <br>
+        <textarea class='text' name='text'></textarea>
+        <input type='submit' value='commit' />
+      </form>
+
+      <% @entries.each do |entry| %>
+        <div class='entry'>
+          <p>
+            <strong><%= entry.day %> <%= entry.time %></strong>
+            <a href='/entry/<%= entry.key %>'>json</a>
+          </p>
+          <div class='entry--text'>
+            <%= entry.formatted_text %>
+          </div>
+        </div>
+      <% end %>
+    </div>
+  </body>
+</html>
+
+
+
+
+
+

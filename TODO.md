@@ -1,0 +1,4 @@
+- [x] add "last post" date to top of template
+- [ ] add search to exe/diaryrb
+- [ ] add date range filters to exe/diaryrb
+- [ ] add edit functionality

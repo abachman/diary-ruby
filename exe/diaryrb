@@ -1,0 +1,161 @@
+#!/usr/bin/env ruby
+
+require 'diary-ruby'
+require 'slop'
+require 'launchy'
+require 'thread'
+
+opts = Slop.parse do |o|
+  # o.string '-c', '--configuration', 'config file location'
+  o.string '-d', '--diary', 'choose diary storage file'
+  o.string '-p', '--passphrase', 'Use encryption passphrase. Diary is assumed to be unencrypted if no passphrase is given.', default: false
+
+  # usage modes
+  o.string '-e', '--edit', 'edit a specific post'
+  o.bool '-l', '--list', 'list all posts by date'
+  o.bool '-s', '--serve', 'start Diary webserver'
+
+  o.bool   '-v', '--verbose', 'enable verbose mode'
+
+  o.on '-V', '--version', 'print the version' do
+    puts "diaryrb #{ Diary::VERSION }"
+    exit
+  end
+end
+
+Diary::Configuration.verbose = opts.verbose?
+
+_diary = "diaryrb.store"
+if opts[:diary]
+  _diary = opts[:diary]
+end
+Diary::Configuration.current_diary = _diary
+
+Diary.debug "LOADING DIARY #{ Diary::Configuration.current_diary }"
+
+_passphrase = nil
+if opts[:passphrase] && opts[:passphrase].strip.size > 0
+  _passphrase = opts[:passphrase]
+elsif opts[:passphrase] == ''
+  require 'io/console'
+  print "Enter passphrase (leave blank for none): "
+  _passphrase = STDIN.noecho {|io| io.gets}.chomp
+elsif ENV['PASSPHRASE']
+  _passphrase = ENV['PASSPHRASE']
+elsif Diary::Configuration.passphrase
+  _passphrase = Diary::Configuration.passphrase
+end
+
+if _passphrase.nil? || _passphrase.size == 0
+  Diary.debug "LOADING WITH NO PASSPHRASE!"
+  $store = Diary::Store.new(Diary::Configuration.current_diary)
+else
+  Diary.debug "LOADING WITH PASSPHRASE #{ _passphrase }"
+  $store = Diary::SecureStore.new(Diary::Configuration.current_diary, _passphrase)
+end
+
+# SANITIZE
+$store.write do |db|
+  db[:entries] ||= []
+  db[:entries] = db[:entries].compact.uniq.sort
+end
+
+if opts.list?
+  entries = $store.read(:entries)
+
+  if entries.nil? || entries.size == 0
+    puts "No entries"
+    exit
+  else
+    entries.uniq.sort.reverse.each do |entry_key|
+      puts "#{ entry_key }   #{ $store.read(entry_key)[:text][0..40].gsub("\n", ' ') }..."
+    end
+  end
+elsif opts.serve?
+  Diary::Server.database = Diary::Configuration.current_diary
+  Diary::Server.passphrase = _passphrase
+  Diary::Server.store = $store
+  t = Thread.new do
+    Diary::Server.run!
+  end
+  Launchy.open('http://localhost:4567')
+  t.join
+else
+  def finish(file)
+    file.close
+    file.unlink   # deletes the temp file
+  end
+
+  def parse_and_store(file)
+    diary_entry = Diary::Parser.parse_file(file)
+    $store.write_entry(diary_entry)
+  end
+
+  file = Tempfile.new(['diary', '.md'])
+  file.sync = true
+
+  ## CREATE NEW ENTRY
+  entry_source = {
+    day: Time.now.strftime("%F"),
+    time: Time.now.strftime("%T"),
+    tags: "",
+    title: "",
+    text: "text goes here"
+  }
+
+  # unless --edit option is used with a valid entry
+  if opts[:edit] && (entry_hash = $store.read(opts[:edit]))
+    entry = Diary::Entry.from_store(entry_hash)
+    entry_source = entry.to_hash
+    entry_source[:tags] = entry_source[:tags].join(', ')
+  end
+
+  tmpl = Diary::Entry.generate(entry_source, $store)
+  file.write(tmpl)
+
+  ed = "vim -f"
+  if ENV['DIARY_EDITOR']
+    ed = ENV['DIARY_EDITOR']
+  elsif ENV['EDITOR']
+    ed = ENV['EDITOR']
+  end
+
+  pid = fork do
+    exec("#{ ed } #{ file.path }")
+  end
+
+  # wait for child to finish, exit when the editor exits
+  exit_signal = Queue.new
+
+  trap("CLD") do
+    Diary.log "CHILD PID #{pid} TERMINATED"
+    exit_signal.push(true)
+  end
+
+  Diary.log "WAITING FOR EDITOR IN PROCESS #{ pid }"
+
+  # Polling based observation of tempfile, save to Store whenever Entry is updated
+  omtime = File.mtime(file.path)
+  while true do
+    quitter = exit_signal.pop(true) rescue nil
+
+    mtime = File.mtime(file.path)
+    if mtime != omtime
+      Diary.log "FILE MODIFIED, UPDATING ENTRY"
+      parse_and_store(file)
+      omtime = mtime
+    end
+
+    if quitter
+      Diary.debug "QUIT SIGNAL RECEIVED, WRITING..."
+      parse_and_store(file)
+      Diary.debug "ERASING..."
+      finish(file)
+      Diary.debug "EXIT"
+      exit 0
+    end
+
+    sleep 1
+  end
+
+end
