@@ -20,6 +20,7 @@ opts = Slop.parse do |o|
   # usage modes
   o.separator ''
   o.separator "Actions (can't be used in combination):"
+  o.bool '-x', '--export', 'export all entries immediately to JSON'
   o.string '-e', '--edit', 'edit a specific post'
   o.bool '-l', '--list', 'list all posts by date'
   o.bool '-s', '--serve', 'start Diary webserver'
@@ -87,7 +88,25 @@ $store.write do |db|
   db[:tags] ||= []
 end
 
-if opts.list?
+if opts.export?
+  entries = $store.read(:entries)
+  puts ''
+
+  if entries.nil? || entries.size == 0
+    puts "No entries"
+    exit
+  else
+    require 'json'
+
+    output = []
+    entries.uniq.sort.each do |entry_key|
+      entry = Diary::Entry.from_store($store.read(entry_key))
+      output << entry.to_hash
+    end
+
+    puts JSON.pretty_generate(output)
+  end
+elsif opts.list?
   entries = $store.read(:entries)
   puts ''
 
