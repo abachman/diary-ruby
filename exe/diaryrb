@@ -7,15 +7,15 @@ require 'thread'
 
 DEFAULT_DIARY = "diaryrb.store"
 
-prompt_for_password = false
+# prompt_for_password = false
 opts = Slop.parse do |o|
-  # o.string '-c', '--configuration', 'config file location'
   o.string '-d', '--diary', "choose diary storage file (leave blank for default, #{DEFAULT_DIARY})"
-  o.string '-p', '--passphrase', 'Use given encryption passphrase or prompt if option is used but no passphrase is given.', default: false do |v|
-    if v.start_with?('-') || v.nil? || v.strip.size == 0
-      prompt_for_password = true
-    end
-  end
+  # o.string '-c', '--configuration', 'config file location'
+  # o.string '-p', '--passphrase', 'Use given encryption passphrase or prompt if option is used but no passphrase is given.', default: false do |v|
+  #   if v.start_with?('-') || v.nil? || v.strip.size == 0
+  #     prompt_for_password = true
+  #   end
+  # end
 
   # usage modes
   o.separator ''
@@ -58,68 +58,45 @@ end
 
 Diary::Configuration.current_diary = _diary
 
-_passphrase = nil
-if prompt_for_password
-  require 'io/console'
-  print "Enter passphrase (leave blank for none): "
-  _passphrase = STDIN.noecho {|io| io.gets}.chomp
-elsif opts[:passphrase] && opts[:passphrase].strip.size > 0
-  _passphrase = opts[:passphrase]
-elsif ENV['PASSPHRASE']
-  _passphrase = ENV['PASSPHRASE']
-elsif Diary::Configuration.passphrase
-  _passphrase = Diary::Configuration.passphrase
-end
-
 diary_path = Diary::Configuration.path || Diary::Configuration.current_diary
-Diary.debug "LOADING DIARY #{ Diary::Configuration.current_diary } AT PATH #{ diary_path }"
-if _passphrase.nil? || _passphrase.size == 0
-  Diary.debug "LOADING WITH NO PASSPHRASE!"
-  $store = Diary::Store.new(diary_path)
-else
-  Diary.debug "LOADING WITH PASSPHRASE #{ _passphrase.gsub(/./, '*') }"
-  $store = Diary::SecureStore.new(diary_path, _passphrase)
-end
+database = Diary::Database.new(diary_path)
 
-# this is like rake db:migrate
-$store.write do |db|
-  db[:entries] ||= []
-  db[:entries] = db[:entries].compact.uniq.sort
-  db[:tags] ||= []
-end
+# make sure we're always up to date
+migrator = Diary::Migrator.new(database)
+migrator.migrate!
+
+# initialize ORM
+Diary::Model.connection = database
 
 if opts.export?
-  entries = $store.read(:entries)
   puts ''
 
-  if entries.nil? || entries.size == 0
+  if Diary::Entry.count == 0
     puts "No entries"
     exit
   else
     require 'json'
 
     output = []
-    entries.uniq.sort.each do |entry_key|
-      entry = Diary::Entry.from_store($store.read(entry_key))
+
+    Diary::Entry.order('created_at DESC').each do |entry|
       output << entry.to_hash
     end
 
     puts JSON.pretty_generate(output)
   end
 elsif opts.list?
-  entries = $store.read(:entries)
   puts ''
-
-  if entries.nil? || entries.size == 0
+  if Diary::Entry.count == 0
     puts "No entries"
     exit
   else
-    entries.uniq.sort.reverse.each do |entry_key|
-      puts "#{ entry_key }   #{ $store.read(entry_key)[:text][0..40].gsub("\n", ' ') }..."
+    Diary::Entry.order('created_at DESC').each do |entry|
+      puts entry.summary
     end
   end
 elsif opts.serve?
-  Diary::Server.store = $store
+  # Diary::Server.store = $store
   t = Thread.new do
     Diary::Server.run!
   end
@@ -133,7 +110,7 @@ else
 
   def parse_and_store(file)
     diary_entry = Diary::Parser.parse_file(file)
-    $store.write_entry(diary_entry)
+    diary_entry.save!
   end
 
   # create a tempfile to store entry in progress in EDITOR
@@ -146,18 +123,18 @@ else
     time: Time.now.strftime("%T"),
     tags: "",
     title: "",
-    text: "text goes here"
+    body: "text goes here"
   }
 
-  # if --edit option is used with a valid entry, load it
-  if opts[:edit] && (entry_hash = $store.read(opts[:edit]))
-    entry = Diary::Entry.from_store(entry_hash)
-    entry_source = entry.to_hash
-    entry_source[:tags] = entry_source[:tags].join(', ')
+  # # if --edit option is used with a valid entry, load it
+  if opts[:edit] && Diary::Entry.exists?(date_key: opts[:edit])
+    entry = Diary::Entry.find(date_key: opts[:edit])
+    entry_source = entry.to_hash if entry
+    # FIXME: set tags
   end
 
   # prepare entry and launch editor
-  tmpl = Diary::Entry.generate(entry_source, $store)
+  tmpl = Diary::Entry.generate(entry_source)
   file.write(tmpl)
 
   ed = "vim -f"
@@ -168,12 +145,12 @@ else
   end
 
   pid = fork do
+    # split the editor into a separate process
     exec("#{ ed } #{ file.path }")
   end
 
   # wait for child to finish, exit when the editor exits
   exit_signal = Queue.new
-
   trap("CLD") do
     Diary.log "CHILD PID #{pid} TERMINATED"
     exit_signal.push(true)

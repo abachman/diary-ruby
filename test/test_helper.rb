@@ -13,3 +13,12 @@ MiniTest::Display.options = {
 def fixture_path(filename)
   File.join(File.dirname(__FILE__), 'fixtures', filename)
 end
+
+def setup_fixture_db
+  db = Diary::Database.new(':memory:')
+
+  mig = Diary::Migrator.new(db)
+  mig.migrate!
+
+  Diary::Model.connection = db
+end

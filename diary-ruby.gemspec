@@ -36,4 +36,5 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'rdiscount', '~> 2.1'
   spec.add_dependency 'slop', '~> 4.2'
   spec.add_dependency 'launchy', '~> 2.4'
+  spec.add_dependency 'sqlite3', '~> 1.3'
 end
