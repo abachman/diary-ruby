@@ -90,7 +90,7 @@ module Diary
     end
 
     def summary
-      "#{ date_key }  #{ truncated_body }"
+      "%-24s%-46s%s" % [date_key, truncated_body, tags.join(', ')]
     end
 
     def to_hash

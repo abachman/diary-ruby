@@ -23,6 +23,7 @@ opts = Slop.parse do |o|
   o.bool '-x', '--export', 'export all entries immediately to JSON'
   o.string '-e', '--edit', 'edit a specific post'
   o.bool '-l', '--list', 'list all posts by date'
+  o.string '-t', '--tag', 'list entries, filtered by tag'
   o.bool '-s', '--serve', 'start Diary webserver'
 
   o.separator ''
@@ -94,6 +95,11 @@ elsif opts.list?
     Diary::Entry.order('created_at DESC').each do |entry|
       puts entry.summary
     end
+  end
+elsif opts[:tag] && (tag_id = Diary::Model.select_value('select rowid from tags where name = ?', opts[:tag]))
+  entry_ids = Diary::Model.select_values('select entry_id from taggings where tag_id = ?', tag_id)
+  Diary::Entry.where(date_key: entry_ids).each do |entry|
+    puts entry.summary
   end
 elsif opts.serve?
   # Diary::Server.store = $store
