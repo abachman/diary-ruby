@@ -203,11 +203,16 @@ module Diary
                         vals = keys.map {|k| attrs[k]}
 
                         and_string = keys.map do |k|
-                          "`#{k}` = ?"
+                          if attrs[k].is_a?(Array)
+                            bind_hold = attrs[k].map {|_| '?'}.join(',')
+                            "`#{k}` in (#{bind_hold})"
+                          else
+                            "`#{k}` = ?"
+                          end
                         end.join(' AND ')
 
                         # (string, bind)
-                        SQLBoundParams.new(and_string, vals)
+                        SQLBoundParams.new(and_string, vals.flatten)
                       elsif conditions.size > 1 && String === conditions[0]
                         # assume (string, bind) given
                         SQLBoundParams.new(conditions[0], conditions[1..-1])
