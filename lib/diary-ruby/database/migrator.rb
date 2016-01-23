@@ -1,6 +1,5 @@
 MIGRATIONS = {}
 
-# 001 - create initial tables
 INITIALIZE = %[
 CREATE TABLE IF NOT EXISTS `versions` (
   `version` TEXT NOT NULL,
@@ -8,33 +7,37 @@ CREATE TABLE IF NOT EXISTS `versions` (
 );
 ]
 
-MIGRATIONS['001'] = %[
-CREATE TABLE IF NOT EXISTS `entries` (
-  `date_key` TEXT NOT NULL PRIMARY KEY,
-  `day`  TEXT NOT NULL,
-  `time` TEXT NOT NULL,
-  `title` TEXT,
-  `link` TEXT,
-  `body` TEXT,
-  `created_at` TEXT NOT NULL,
-  `updated_at` TEXT DEFAULT NULL
-);
+## MIGRATION FORMAT:
+# MIGRATIONS[number] = array of sql statements
 
-CREATE INDEX IF NOT EXISTS `index_entries_on_key` on `entries` (`date_key`);
-
-CREATE TABLE IF NOT EXISTS `tags` (
-  `name` TEXT DEFAULT NULL
-);
-
-CREATE TABLE IF NOT EXISTS `taggings` (
-  `tag_id` INTEGER DEFAULT NULL,
-  `entry_id` INTEGER DEFAULT NULL,
-  `created_at` TEXT DEFAULT NULL
-);
-
-CREATE INDEX IF NOT EXISTS `index_taggings_on_tag_id` on `taggings` (`tag_id`);
-CREATE INDEX IF NOT EXISTS `index_taggings_on_entry_id` on `taggings` (`entry_id`);
-]
+# 001 - create initial tables
+MIGRATIONS['001'] = [%[
+  CREATE TABLE IF NOT EXISTS `entries` (
+    `date_key` TEXT NOT NULL PRIMARY KEY,
+    `day`  TEXT NOT NULL,
+    `time` TEXT NOT NULL,
+    `title` TEXT,
+    `link` TEXT,
+    `body` TEXT,
+    `created_at` TEXT NOT NULL,
+    `updated_at` TEXT DEFAULT NULL
+  );
+], %[
+  CREATE INDEX IF NOT EXISTS `index_entries_on_key` on `entries` (`date_key`);
+], %[
+  CREATE TABLE IF NOT EXISTS `tags` (
+    `name` TEXT DEFAULT NULL
+  );
+], %[
+  CREATE TABLE IF NOT EXISTS `taggings` (
+    `tag_id` INTEGER NOT NULL,
+    `entry_id` TEXT NOT NULL
+  );
+], %[
+  CREATE INDEX IF NOT EXISTS `index_taggings_on_tag_id` on `taggings` (`tag_id`);
+], %[
+  CREATE INDEX IF NOT EXISTS `index_taggings_on_entry_id` on `taggings` (`entry_id`);
+]]
 
 MIGRATION_VERSIONS = MIGRATIONS.keys.sort
 
@@ -70,10 +73,16 @@ module Diary
 
         if !exists
           Diary.debug("UPDATING DATABASE TO VERSION #{ version }")
-          db.execute(MIGRATIONS[version])
+          if MIGRATIONS[version].is_a?(Array)
+            MIGRATIONS[version].each do |statement|
+              db.execute(statement)
+            end
+          else
+            db.execute(MIGRATIONS[version])
+          end
           db.execute("INSERT INTO versions VALUES ('#{version}', strftime('%Y-%m-%dT%H:%M:%S+0000'));")
         else
-          puts "AT #{ version } SINCE #{ on_date }"
+          Diary.debug("AT #{ version } SINCE #{ on_date }")
         end
       end
     end
