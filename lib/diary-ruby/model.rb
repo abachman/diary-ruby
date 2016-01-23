@@ -4,6 +4,11 @@ module Diary
   module ModelQuery
     extend ActiveSupport::Concern
 
+    # Instance Methods
+    def timestamp_sql
+      "strftime('%Y-%m-%dT%H:%M:%S+0000')"
+    end
+
     module ClassMethods
       def columns
         @columns ||= connection.execute("PRAGMA table_info(#{table_name})")
@@ -68,6 +73,25 @@ module Diary
 
       def connection
         @@connection
+      end
+
+      # one-off queries
+      def execute(sql, *binds)
+        Diary.debug("[Model execute] #{ sql } #{ binds.inspect }")
+        connection.execute(sql, binds)
+      end
+
+      # one-off queries
+      def select_rows(sql, *binds)
+        execute(sql, *binds)
+      end
+
+      def select_values(sql, *binds)
+        select_rows(sql, *binds).map {|row| row[0]}
+      end
+
+      def select_value(sql, *binds)
+        select_values(sql, *binds).first
       end
     end
   end

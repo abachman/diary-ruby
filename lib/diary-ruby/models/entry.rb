@@ -22,14 +22,24 @@ module Diary
     end
 
     def self.from_hash(record)
-      self.new(
+      entry = self.new(
         day: record['day'],
         time: record['time'],
-        tags: record['tags'],
         body: record['body'],
         title: record['title'],
         date_key: record['date_key'],
       )
+
+      # taggings!
+      begin
+        tag_ids = select_values('select tag_id from taggings where entry_id = ?', [entry.identifier])
+        bind_hold = tag_ids.map {|_| '?'}.join(',')
+        entry.tags = select_values("select name from tags where rowid in (#{ bind_hold })", *tag_ids)
+      rescue => ex
+        Diary.debug "FAILED TO LOAD TAGS. #{ ex.message }"
+      end
+
+      entry
     end
 
     def self.keygen(day, time)
@@ -57,10 +67,14 @@ module Diary
       @title = options[:title]
 
       if options[:date_key].nil?
-        @date_key = Entry.keygen(day, time)
+        @date_key = identifier
       else
         @date_key = options[:date_key]
       end
+    end
+
+    def identifier
+      self.class.keygen(day, time)
     end
 
     def formatted_body
@@ -85,28 +99,52 @@ module Diary
         time: time,
         tags: tags,
         body: body,
-        title: '',
+        title: title,
         date_key: date_key,
       }
-    end
-
-    def timestamp
-      "strftime('%Y-%m-%dT%H:%M:%S+0000')"
     end
 
     def save!
       if self.class.find(date_key: date_key)
         # update record
-        sql = "UPDATE entries SET day=?, time=?, body=?, link=?, title=?, updated_at=#{timestamp} WHERE date_key=?"
-        self.class.connection.execute(sql, [day, time, body, link, title, date_key])
+        sql = "UPDATE entries SET day=?, time=?, body=?, link=?, title=?, updated_at=#{timestamp_sql} WHERE date_key=?"
+        self.class.execute(sql, day, time, body, link, title, date_key)
       else
         # insert
         sql = %[INSERT INTO entries (day, time, body, link, title, date_key, created_at, updated_at)
-                VALUES              (?,   ?,    ?,    ?,    ?,     ?,        #{timestamp}, #{timestamp})]
-        self.class.connection.execute(sql, [day, time, body, link, title, date_key])
+                VALUES              (?,   ?,    ?,    ?,    ?,     ?,        #{timestamp_sql}, #{timestamp_sql})]
+        self.class.execute(sql, day, time, body, link, title, date_key)
       end
 
-      # TODO: update tags
+      begin
+        update_tags!
+      rescue => ex
+        Diary.debug "FAILED TO UPDATE TAGS #{ tags.inspect }. #{ ex.message }"
+      end
+    end
+
+    def update_tags!
+      # clean out existing
+      Diary.debug "CLEANING `taggings`"
+      self.class.execute('delete from taggings where entry_id = ?', [identifier])
+
+      # add back
+      tags.each do |tag|
+        # is tag in db?
+        tag_id = self.class.select_value('select rowid from tags where name = ?', tag)
+
+        if tag_id.nil?
+          Diary.debug "CREATING TAG #{ tag.inspect }"
+
+          # exists
+          Diary.debug self.class.select_rows('PRAGMA table_info(tags)').inspect
+          self.class.execute("insert into tags (name) values (?)", [tag])
+          tag_id = self.class.select_value('select last_insert_rowid()')
+        end
+
+        Diary.debug "CREATING tagging"
+        self.class.execute('insert into taggings (tag_id, entry_id) values (?, ?)', [tag_id, identifier])
+      end
     end
   end
 end
