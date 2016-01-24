@@ -152,7 +152,12 @@ else
 
   pid = fork do
     # split the editor into a separate process
-    exec("#{ ed } #{ file.path }")
+    command = if /%s/ =~ ed
+                ed % [file.path]
+              else
+                "#{ ed } #{ file.path }"
+              end
+    exec(command)
   end
 
   # wait for child to finish, exit when the editor exits
