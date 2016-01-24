@@ -7,5 +7,7 @@
 /pkg/
 /spec/reports/
 /tmp/
+/*.db
 /*.store
 /.diaryrb/
+/.*~

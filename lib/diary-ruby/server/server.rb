@@ -22,26 +22,9 @@ module Diary
     end
 
     get '/' do
-      keys = store.read(:entries)
-
-      if keys.nil?
-        store.write do |db|
-          db[:entries] = []
-        end
-
-        keys = []
+      @entries = Entry.order('created_at DESC').map do |entry_hash|
+        Entry.from_hash(entry_hash)
       end
-
-      @entries = keys.uniq.map {|entry_key|
-        entry = store.read(entry_key)
-
-        if entry
-          logger.debug "LOAD #{ entry }"
-          Entry.from_store(entry)
-        else
-          nil
-        end
-      }.compact
 
       logger.info "returning keys: #{ keys }"
       logger.info "returning entries: #{ @entries }"
@@ -53,16 +36,13 @@ module Diary
       content_type :json
 
       key = params[:key]
-      entry_hash = store.read(key)
-      entry = Entry.from_store(entry_hash)
+      entry_hash = Entry.find(date_key: key)
 
-      content = RDiscount.new entry.text
-      entry_hash[:formatted] = content.to_html
-
-      if entry
+      if entry_hash
+        entry = Entry.from_store(entry_hash)
+        content = RDiscount.new entry['body']
+        entry_hash[:formatted] = content.to_html
         entry_hash.to_json
-      else
-        {}
       end
     end
 
@@ -81,7 +61,7 @@ module Diary
         day: params[:day],
         time: params[:time],
         tags: tags,
-        text: params[:text],
+        body: params[:body],
       )
 
       store.write_entry(entry)

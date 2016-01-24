@@ -46,11 +46,10 @@ module Diary
       Diary.debug "BODY #{ body.join(" ") }"
 
       return Entry.new(
-        nil,
         day: metadata['day'],
         time: metadata['time'],
         tags: metadata['tags'],
-        text: body.join("\n").strip,
+        body: body.join("\n").strip,
         title: metadata['title'],
         key: key,
       )
